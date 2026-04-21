@@ -1,11 +1,14 @@
-﻿using Aluparts.DataLayer.Entities;
+﻿using Aluparts.API.DTO_s;
+using Aluparts.DataLayer.Entities;
 using Aluparts.DataLayer.Interfaces;
 using BCrypt.Net;
 using Microsoft.Extensions.Configuration;
 using Microsoft.IdentityModel.Tokens;
+using OtpNet;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
+
 using static Aluparts.DataLayer.Entities.User;
 
 namespace Aluparts.BusinessLayer;
@@ -42,14 +45,18 @@ public class AuthService
         await _userRepository.SaveChangesAsync();
         return true;
     }
-    public async Task<string?> LoginAsync(string email, string password)
+    public async Task<LoginResult> LoginAsync(string email, string password)
     {
         var user = await _userRepository.GetByEmailAsync(email);
-        if (user == null) return null;
+        if (user == null || !BCrypt.Net.BCrypt.Verify(password, user.PasswordHash))
+            return new LoginResult { Success = false };
 
-        if (!BCrypt.Net.BCrypt.Verify(password, user.PasswordHash)) return null;
+        if (user.IsMfaEnabled)
+        {
+            return new LoginResult { Success = true, RequiresMfa = true };
+        }
 
-        return GenerateJwtToken(user);
+        return new LoginResult { Success = true, Token = GenerateJwtToken(user) };
     }
 
     private string GenerateJwtToken(User user)
@@ -72,6 +79,40 @@ public class AuthService
             signingCredentials: credentials);
 
         return new JwtSecurityTokenHandler().WriteToken(token);
+    }
+
+    public async Task<string> SetupMfaAsync(string email)
+    {
+        var user = await _userRepository.GetByEmailAsync(email);
+        if (user == null) throw new Exception("User not found");
+
+        var key = KeyGeneration.GenerateRandomKey(20);
+
+        string base32Secret = Base32Encoding.ToString(key);
+
+        user.MfaSecret = base32Secret;
+        await _userRepository.SaveChangesAsync();
+
+        return $"otpauth://totp/Aluparts:{email}?secret={base32Secret}&issuer=Aluparts";
+    }
+
+    public async Task<bool> VerifyAndEnableMfaAsync(string email, string code)
+    {
+        var user = await _userRepository.GetByEmailAsync(email);
+        if (user == null || string.IsNullOrEmpty(user.MfaSecret)) return false;
+
+        var bytes = Base32Encoding.ToBytes(user.MfaSecret);
+        var totp = new Totp(bytes);
+
+        bool isValid = totp.VerifyTotp(code, out _, new VerificationWindow(previous: 1, future: 1));
+
+        if (isValid)
+        {
+            user.IsMfaEnabled = true;
+            await _userRepository.SaveChangesAsync();
+        }
+
+        return isValid;
     }
 
 }
