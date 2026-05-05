@@ -34,7 +34,7 @@ public class AuthController : ControllerBase
 
         if (result.RequiresMfa)
         {
-            return Ok(new { RequiresMfa = true, Message = "MFA code vereist" });
+            return Ok(new { RequiresMfa = true, Message = "MFA code needed" });
         }
 
         return Ok(new { Token = result.Token });
@@ -55,7 +55,7 @@ public class AuthController : ControllerBase
     {
         var email = User.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value;
         var result = await _authService.VerifyAndEnableMfaAsync(email!, code);
-        return result ? Ok("MFA geactiveerd!") : BadRequest("Ongeldige code.");
+        return result ? Ok("MFA Activated!") : BadRequest("Invalid code.");
     }
 
     [HttpPost("mfa/verify-login")]
@@ -63,7 +63,7 @@ public class AuthController : ControllerBase
     {
         var token = await _authService.VerifyMfaAndLoginAsync(email, code);
 
-        if (token == null) return Unauthorized("Ongeldige MFA code.");
+        if (token == null) return Unauthorized("Invalid MFA code.");
 
         return Ok(new { Token = token });
     }
