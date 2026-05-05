@@ -115,4 +115,20 @@ public class AuthService
         return isValid;
     }
 
+    public async Task<string?> VerifyMfaAndLoginAsync(string email, string code)
+    {
+        var user = await _userRepository.GetByEmailAsync(email);
+        if (user == null || !user.IsMfaEnabled || string.IsNullOrEmpty(user.MfaSecret))
+            return null;
+
+        var bytes = Base32Encoding.ToBytes(user.MfaSecret);
+        var totp = new Totp(bytes);
+
+        bool isValid = totp.VerifyTotp(code, out _, new VerificationWindow(previous: 1, future: 1));
+
+        if (!isValid) return null;
+
+        return GenerateJwtToken(user);
+    }
+
 }

@@ -28,11 +28,16 @@ public class AuthController : ControllerBase
     [HttpPost("login")]
     public async Task<IActionResult> Login(string email, string password)
     {
-        var token = await _authService.LoginAsync(email, password);
+        var result = await _authService.LoginAsync(email, password);
 
-        if (token == null) return Unauthorized("Invalid Credentials");
+        if (!result.Success) return Unauthorized("Invalid Credentials");
 
-        return Ok(new { Token = token });
+        if (result.RequiresMfa)
+        {
+            return Ok(new { RequiresMfa = true, Message = "MFA code vereist" });
+        }
+
+        return Ok(new { Token = result.Token });
     }
 
     [HttpPost("mfa/setup")]
@@ -51,5 +56,15 @@ public class AuthController : ControllerBase
         var email = User.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value;
         var result = await _authService.VerifyAndEnableMfaAsync(email!, code);
         return result ? Ok("MFA geactiveerd!") : BadRequest("Ongeldige code.");
+    }
+
+    [HttpPost("mfa/verify-login")]
+    public async Task<IActionResult> VerifyLogin(string email, string code)
+    {
+        var token = await _authService.VerifyMfaAndLoginAsync(email, code);
+
+        if (token == null) return Unauthorized("Ongeldige MFA code.");
+
+        return Ok(new { Token = token });
     }
 }
