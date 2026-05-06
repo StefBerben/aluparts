@@ -1,4 +1,5 @@
-﻿using Aluparts.API.Models;
+﻿using Aluparts.API.DTO_s;
+using Aluparts.API.Models;
 using Aluparts.BusinessLayer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -26,9 +27,9 @@ public class AuthController : ControllerBase
     }
 
     [HttpPost("login")]
-    public async Task<IActionResult> Login(string email, string password)
+    public async Task<IActionResult> Login([FromBody] LoginRequest request)
     {
-        var result = await _authService.LoginAsync(email, password);
+        var result = await _authService.LoginAsync(request.Email, request.Password);
 
         if (!result.Success) return Unauthorized("Invalid Credentials");
 
@@ -38,6 +39,16 @@ public class AuthController : ControllerBase
         }
 
         return Ok(new { Token = result.Token });
+    }
+
+    [HttpPost("mfa/verify-login")]
+    public async Task<IActionResult> VerifyLogin([FromBody] VerifyLoginRequest request)
+    {
+        var token = await _authService.VerifyMfaAndLoginAsync(request.Email, request.Code);
+
+        if (token == null) return Unauthorized("Invalid MFA code.");
+
+        return Ok(new { Token = token });
     }
 
     [HttpPost("mfa/setup")]
@@ -58,13 +69,24 @@ public class AuthController : ControllerBase
         return result ? Ok("MFA Activated!") : BadRequest("Invalid code.");
     }
 
-    [HttpPost("mfa/verify-login")]
-    public async Task<IActionResult> VerifyLogin(string email, string code)
+
+
+    [HttpGet("status")]
+    [Authorize]
+    public async Task<IActionResult> GetStatus()
     {
-        var token = await _authService.VerifyMfaAndLoginAsync(email, code);
+        var email = User.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value;
 
-        if (token == null) return Unauthorized("Invalid MFA code.");
+        if (string.IsNullOrEmpty(email))
+            return Unauthorized();
 
-        return Ok(new { Token = token });
+        var isEnabled = await _authService.IsMfaEnabledAsync(email);
+
+        return Ok(new
+        {
+            isMfaEnabled = isEnabled,
+            email = email
+        });
     }
+
 }

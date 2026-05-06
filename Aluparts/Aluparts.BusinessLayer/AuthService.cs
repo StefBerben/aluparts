@@ -131,4 +131,12 @@ public class AuthService
         return GenerateJwtToken(user);
     }
 
+    public async Task<bool> IsMfaEnabledAsync(string email)
+    {
+        var user = await _userRepository.GetByEmailAsync(email);
+        return user?.IsMfaEnabled ?? false;
+    }
+
+
+
 }
